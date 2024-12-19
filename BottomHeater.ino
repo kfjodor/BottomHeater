@@ -17,9 +17,6 @@
 #define TRIAC_ZERO_CROSS PB10
 #define TRIAC_PWM PB11
 
-#define HEAT_EFF_MIN 0.2  // Required head efficiency 0.2'C per sec
-#define HEAT_EFF_MAX 0.4  // Required head efficiency 0.4'C per sec
-
 MAX6675 thermocouple(MAXCLK, MAXCS, MAXDO);
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 HardwareTimer outTimer(TIM3);
@@ -27,16 +24,17 @@ HardwareTimer outTimer(TIM3);
 int mode = MODE_TEMP;
 float temp = 0;
 float prevTemp = 0;
-float prevTemp10sec = 0;
+float prevTemp3sec = 0;
 unsigned long prevMillis = 0;
 
 int count = 0;
 float heat_eff = 0;
 int desiredTemp = 0;
 bool tempChanged = false;
-int power = 0;  // 0 - 100
+volatile int power = 20;  // 0 - 100
 bool powerChanged = false;
 int powerDelay = 0;  // 1-9999 for 50Hz
+const int measurementCycles = 3;
 
 void setup() {
   lcd.init();
@@ -58,7 +56,7 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(TRIAC_ZERO_CROSS), ZeroCross, RISING);
   attachInterrupt(digitalPinToInterrupt(ENCODER_S1), EncoderRotate, FALLING);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_KEY), EncoderKey, FALLING);
+  //attachInterrupt(digitalPinToInterrupt(ENCODER_KEY), EncoderKey, FALLING);
 
   printPower(power, heat_eff);
 }
@@ -172,16 +170,7 @@ void EncoderKeyPower() {
 }
 
 void setPowerDelay(int power) {
-  switch (power) {
-    case 0:
-      powerDelay = 10000;
-      break;
-    case 100:
-      powerDelay = 0;
-      break;
-    default:
-      powerDelay = (100 - power) * 100;
-  }
+  powerDelay = (100 - power) * 100;
 }
 
 void loopPower() {
@@ -196,14 +185,26 @@ void loopPower() {
     }
 
     prevMillis = nowMillis;
+    count++;
+
+    // 3 секундный счетчик
+    if (count == measurementCycles) {
+      heat_eff = temp - prevTemp3sec;  // скорость нагрева в 10 секунд
+      prevTemp3sec = temp;
+      count = 0;
+      printPower(power, heat_eff);
+    }
   }
 
   if (powerChanged) {
     setPowerDelay(power);
-    printPower(power, 0);
+    printPower(power, heat_eff);
     powerChanged = false;
   }
 }
+
+float heat_eff_min;
+float heat_eff_max;
 
 void loopTemp() {
   unsigned long nowMillis = millis();
@@ -217,35 +218,44 @@ void loopTemp() {
     }
 
     prevMillis = nowMillis;
+
     count++;
 
-    // 10 секундный счетчик
-    if (count > 10) {
-      heat_eff = temp - prevTemp10sec;  // скорость нагрева в 10 секунд
-      prevTemp10sec = temp;
+    // 3 sec loop
+    if (count == measurementCycles) {
+      count = 0;
+      heat_eff = temp - prevTemp3sec;
+      prevTemp3sec = temp;
 
       // нагрев
       if (desiredTemp > temp) {
-        // Скорость нагрева меньше 0.2'C - увеличиваем
-        if (heat_eff < HEAT_EFF_MIN) {
-          power++;
-        }
-        // Скорость нагрева больше 0.4'C - уменьшаем
-        if (heat_eff > HEAT_EFF_MAX) {
-          power--;
-        }
-      } else if (desiredTemp < temp) {       // охлаждение
-        if (heat_eff > -1 * HEAT_EFF_MIN) {  // Скорость охлаждения меньше 0.2
-          power--;
-        }
+        float diff = desiredTemp - temp;
+        if (diff > 50) {
+          power = diff / 2;
+        } else if (diff <= 10) {  // 0 - 0.5
+          if (heat_eff < 0) {
+            power++;
+          }
+          if (heat_eff > 0.8) {  
+            power--;
+          }
+        } else {                 // 0.5 - 1.0
+          if (heat_eff < 0.8) {
+            power++;
+          }
 
-        if (heat_eff < -1 * HEAT_EFF_MAX) {  // Скорость охлаждения больше 0.4
-          power++;
+          if (heat_eff > 1.5) {
+            power--;
+          }
+        }
+      } else if (desiredTemp < temp) {  // охлаждение
+        if (heat_eff > 0) {
+          power--;
         }
       } else {  // Required temp acquired
-        if (heat_eff > 0.0) {
+        if (heat_eff > 0.5) {
           power--;
-        } else if (heat_eff < 0.0) {
+        } else if (heat_eff < 0.5) {
           power++;
         }
       }
@@ -258,8 +268,7 @@ void loopTemp() {
 
       setPowerDelay(power);
       printPower(power, heat_eff);
-      count = 0;
-    }  // 10 sec loop
+    }  // measurementCycles
   }    // 1 sec loop
 
   // покрутили ручку или произошел нагрев
