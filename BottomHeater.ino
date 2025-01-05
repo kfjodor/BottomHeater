@@ -55,7 +55,7 @@ void setup() {
   }
 
   attachInterrupt(digitalPinToInterrupt(TRIAC_ZERO_CROSS), ZeroCross, RISING);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_S1), EncoderRotate, FALLING);
+  ``
   //attachInterrupt(digitalPinToInterrupt(ENCODER_KEY), EncoderKey, FALLING);
 
   printPower(power, heat_eff);
@@ -121,9 +121,9 @@ void EncoderKey() {
 }
 
 void EncoderRotateTemp() {
-  if (digitalRead(ENCODER_S2) == LOW) {
+  if (digitalRead(ENCODER_S1) == LOW && digitalRead(ENCODER_S2) == LOW) {
     desiredTemp++;
-  } else {
+  } else if (digitalRead(ENCODER_S1) == LOW && digitalRead(ENCODER_S2) == HIGH) {
     desiredTemp--;
   }
 
@@ -189,7 +189,7 @@ void loopPower() {
 
     // 3 секундный счетчик
     if (count == measurementCycles) {
-      heat_eff = temp - prevTemp3sec;  // скорость нагрева в 10 секунд
+      heat_eff = temp - prevTemp3sec;  // скорость нагрева в 3 секунд
       prevTemp3sec = temp;
       count = 0;
       printPower(power, heat_eff);
@@ -232,19 +232,14 @@ void loopTemp() {
         float diff = desiredTemp - temp;
         if (diff > 50) {
           power = diff / 2;
-        } else if (diff <= 10) {  // 0 - 0.5
-          if (heat_eff < 0) {
-            power++;
-          }
-          if (heat_eff > 0.8) {  
-            power--;
-          }
-        } else {                 // 0.5 - 1.0
-          if (heat_eff < 0.8) {
-            power++;
-          }
+        } else {
+          heat_eff_min = diff / 15;
+          heat_eff_max = diff / 10;          
 
-          if (heat_eff > 1.5) {
+          if (heat_eff < heat_eff_min) {
+            power++;
+          }
+          if (heat_eff > heat_eff_max) {
             power--;
           }
         }

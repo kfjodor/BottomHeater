@@ -1,5 +1,0 @@
-(sym_lib_table
-  (version 7)
-  (lib (name "bp")(type "Legacy")(uri "/home/fedor/KiCAD-projects/libs/blue-pill-kicad-master/bp.lib")(options "")(descr ""))
-  (lib (name "STM32_Pills")(type "KiCad")(uri "${KIPRJMOD}/STM32_Pills.kicad_sym")(options "")(descr ""))
-)
