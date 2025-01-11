@@ -35,6 +35,7 @@ volatile int power = 20;  // 0 - 100
 bool powerChanged = false;
 int powerDelay = 0;  // 1-9999 for 50Hz
 const int measurementCycles = 3;
+unsigned long prevRotation = 0;
 
 void setup() {
   lcd.init();
@@ -55,7 +56,7 @@ void setup() {
   }
 
   attachInterrupt(digitalPinToInterrupt(TRIAC_ZERO_CROSS), ZeroCross, RISING);
-  ``
+  attachInterrupt(digitalPinToInterrupt(ENCODER_S1), EncoderRotate, FALLING);
   //attachInterrupt(digitalPinToInterrupt(ENCODER_KEY), EncoderKey, FALLING);
 
   printPower(power, heat_eff);
@@ -121,10 +122,21 @@ void EncoderKey() {
 }
 
 void EncoderRotateTemp() {
+  unsigned long changeValue = 1;
+  unsigned long currentRotation = micros();
+
+  if (currentRotation - prevRotation < 10000) {
+    changeValue = 20;
+  } else if (currentRotation - prevRotation < 20000) {
+    changeValue = 10;
+  }
+
+  prevRotation = currentRotation;
+
   if (digitalRead(ENCODER_S1) == LOW && digitalRead(ENCODER_S2) == LOW) {
-    desiredTemp++;
+    desiredTemp += changeValue;
   } else if (digitalRead(ENCODER_S1) == LOW && digitalRead(ENCODER_S2) == HIGH) {
-    desiredTemp--;
+    desiredTemp -= changeValue;
   }
 
   if (desiredTemp < 0) {
@@ -234,7 +246,7 @@ void loopTemp() {
           power = diff / 2;
         } else {
           heat_eff_min = diff / 15;
-          heat_eff_max = diff / 10;          
+          heat_eff_max = diff / 10;
 
           if (heat_eff < heat_eff_min) {
             power++;
